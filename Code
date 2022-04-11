@@ -1,0 +1,78 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Feb  8 10:11:48 2022
+
+@author: Sean W. Hyland
+"""
+
+from datetime import datetime
+import os
+import meraki
+import pandas as pd
+import time
+
+
+API_KEY = "Enter_API_Key_Here"
+ORG_ID = "Enter_Organization_ID"
+
+
+while True:  
+    starttime = time.time()
+    dashboard = meraki.DashboardAPI(
+        api_key=API_KEY,
+        # base_url='https://api-mp.meraki.com/api/v1/',
+        output_log=True)
+
+    # Get list of organizations to which API key has access
+    organizations = dashboard.organizations.getOrganizations()
+    
+    # Gather data from the specified Organization
+    for org in organizations:
+        org_id = org['id']
+        print(f"status: checking {org['name']} - {org['id']}")
+            # Get list of networks in organization
+        print(f'\nAnalyzing organization {org["name"]}:')
+        try:
+            networks = dashboard.organizations.getOrganizationNetworks(org_id)
+        except meraki.APIError as e:
+            print(f'Meraki API error: {e}')
+            print(f'status code = {e.status}')
+            print(f'reason = {e.reason}')
+            print(f'error = {e.message}')
+            continue
+        except Exception as e:
+            print(f'some other error: {e}')
+            continue
+            
+        total = len(networks)
+        counter = 1
+        print(f'  - iterating through {total} networks in organization {org_id}')
+        for net in networks:
+            print(f'Finding clients in network {net["name"]} ({counter} of {total})')
+            try:
+            # Get list of clients on network, filtering on timespan of last 14 days
+                clients = dashboard.networks.getNetworkClients(net['id'], timespan=3600, perPage=1000, total_pages='all')
+            except meraki.APIError as e:
+                print(f'Meraki API error: {e}')
+                print(f'status code = {e.status}')
+                print(f'reason = {e.reason}')
+                print(f'error = {e.message}')
+            except Exception as e:
+                print(f'some other error: {e}')
+            counter += 1
+
+    clients = pd.DataFrame(clients)
+    now = datetime.now()
+    now = now.strftime("%Y-%m-%d %H:%M:%S")
+    clients.insert(loc=0, column='Date', value=now)
+
+    # Import data file to append new data
+    os.chdir("Enter the directory where you would like the data stored")
+    # Previously created file header to store data
+    Occupancy = pd.read_csv('Meraki.csv')
+    frames = [clients, Occupancy]
+    Occupancy = pd.concat(frames)
+
+    Occupancy.to_csv("Meraki.csv", index = False)
+    print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time())))
+    time.sleep(3600.0 - ((time.time() - starttime) % 3600.0))
